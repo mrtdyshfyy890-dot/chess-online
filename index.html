@@ -1,0 +1,352 @@
+<!DOCTYPE html>
+<html lang="fa" dir="rtl">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
+<title>شطرنج دونفره آنلاین</title>
+<script src="https://unpkg.com/peerjs@1.5.4/dist/peerjs.min.js"></script>
+<style>
+:root{--bg:#101820;--panel:#1b2935;--panel2:#243746;--gold:#e6bd69;--light:#f0d9b5;--dark:#b58863;--text:#f6f2e9;--muted:#b8c4ce;--green:#74c69d;--red:#ff7777}
+*{box-sizing:border-box}
+body{margin:0;background:radial-gradient(circle at top,#243746,#101820 65%);color:var(--text);font-family:Tahoma,Arial,sans-serif;min-height:100vh}
+.app{max-width:760px;margin:auto;padding:14px}
+header{text-align:center;padding:8px 0 14px}
+h1{margin:0;color:var(--gold);font-size:clamp(25px,6vw,36px)}
+.subtitle{color:var(--muted);font-size:13px;margin-top:7px}
+.card{background:rgba(27,41,53,.96);border:1px solid #344b5d;border-radius:18px;padding:12px;box-shadow:0 12px 30px #0004}
+.player{display:flex;align-items:center;justify-content:space-between;padding:10px 12px;background:var(--panel2);border-radius:12px;margin:8px 0}
+.player.active{outline:2px solid var(--gold);background:#354657}
+.player .name{font-weight:bold}.player .side{font-size:12px;color:var(--muted);margin-top:4px}
+.turn-dot{width:11px;height:11px;border-radius:50%;background:#aaa;margin-left:8px;display:inline-block}
+.player.active .turn-dot{background:var(--green);box-shadow:0 0 10px var(--green)}
+.board-wrap{width:min(94vw,560px);margin:12px auto;position:relative}
+.board{display:grid;grid-template-columns:repeat(8,1fr);border:5px solid #694c34;border-radius:7px;overflow:hidden;box-shadow:0 8px 22px #0007;direction:ltr;touch-action:manipulation}
+.sq{aspect-ratio:1;display:flex;align-items:center;justify-content:center;position:relative;cursor:pointer;user-select:none;font-size:clamp(30px,8.4vw,57px);line-height:1}
+.sq.light{background:var(--light)}.sq.dark{background:var(--dark)}
+.sq.selected{background:#f6e66b!important}
+.sq.last{box-shadow:inset 0 0 0 4px #e7d35c99}
+.sq.check{background:#e66b65!important}
+.piece{filter:drop-shadow(0 2px 1px #0005);z-index:2}
+.white-piece{color:#fff;text-shadow:0 1px 2px #333,0 0 2px #333}
+.black-piece{color:#20252a;text-shadow:0 1px 1px #fff7}
+.dot{position:absolute;width:22%;height:22%;border-radius:50%;background:#173e2c88;z-index:3;pointer-events:none}
+.capture-ring{position:absolute;inset:5%;border:4px solid #174b35a8;border-radius:50%;z-index:3;pointer-events:none}
+.coord{position:absolute;font-size:9px;font-weight:bold;opacity:.75;z-index:4;pointer-events:none}
+.file{bottom:2px;right:4px}.rank{top:2px;left:4px}
+.status{text-align:center;padding:10px 8px;font-weight:bold;color:var(--gold);min-height:42px}
+.buttons{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-top:10px}
+button{font-family:inherit;border:0;border-radius:11px;padding:12px 7px;background:#38546a;color:white;font-weight:bold;font-size:13px;cursor:pointer}
+button.primary{background:var(--gold);color:#20252a}
+button:active{transform:scale(.98)}
+.lower{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-top:12px}
+.box{background:#14212b;border-radius:12px;padding:10px;min-height:88px}
+.box h3{font-size:13px;color:var(--gold);margin:0 0 8px}
+#history{font-size:12px;line-height:1.9;color:var(--muted);max-height:130px;overflow:auto}
+#captured{font-size:23px;line-height:1.5;min-height:32px;word-break:break-word}
+.note{font-size:11px;color:var(--muted);line-height:1.8;margin:12px 3px 2px}
+.modal{position:fixed;inset:0;background:#000a;display:none;align-items:center;justify-content:center;padding:20px;z-index:20}
+.modal.show{display:flex}
+.dialog{background:#1b2935;border:1px solid #64798a;border-radius:18px;padding:20px;text-align:center;width:min(340px,100%)}
+.dialog h2{font-size:18px;margin:0 0 15px}
+.promos{display:flex;justify-content:center;gap:9px}
+.promos button{font-size:38px;width:62px;height:65px;padding:4px}
+@media(max-width:420px){.app{padding:8px}.card{padding:8px}.buttons button{font-size:11px;padding:11px 3px}.lower{gap:7px}}
+input:focus{outline:2px solid var(--gold)}
+button:disabled{opacity:.45;cursor:not-allowed}
+</style>
+</head>
+<body>
+<div class="app">
+<header><h1>♟ شطرنج دونفره</h1><div class="subtitle">دو بازیکن، یک گوشی؛ قوانین استاندارد شطرنج</div></header>
+<div class="card" style="margin-bottom:12px">
+  <div style="color:var(--gold);font-weight:bold;margin:2px 4px 9px">بازی آنلاین با دوستت</div>
+  <div style="display:flex;gap:7px;flex-wrap:wrap">
+    <input id="roomCode" placeholder="کد اتاق (مثلاً 482731)" inputmode="numeric" maxlength="12"
+      style="flex:1;min-width:130px;border:1px solid #526879;border-radius:10px;background:#101b24;color:white;padding:11px;font:inherit">
+    <button class="primary" id="createRoom">ساخت اتاق</button>
+    <button id="joinRoom">ورود به اتاق</button>
+  </div>
+  <div id="onlineStatus" style="font-size:12px;color:var(--muted);margin:9px 3px 1px">برای بازی آنلاین، یک نفر اتاق بسازد و کد را برای نفر دوم بفرستد.</div>
+</div>
+<div class="card">
+  <div id="blackPlayer" class="player"><div><span class="turn-dot"></span><span class="name">بازیکن سیاه</span><div class="side">مهره‌های تیره</div></div><strong>♚</strong></div>
+  <div class="board-wrap"><div id="board" class="board" aria-label="صفحه شطرنج"></div></div>
+  <div id="whitePlayer" class="player active"><div><span class="turn-dot"></span><span class="name">بازیکن سفید</span><div class="side">مهره‌های روشن</div></div><strong>♔</strong></div>
+  <div id="status" class="status">نوبت سفید است؛ یک مهره را انتخاب کن.</div>
+  <div class="buttons">
+    <button class="primary" id="newGame">بازی جدید</button>
+    <button id="undo">برگشت حرکت</button>
+    <button id="claimDraw">اعلام مساوی</button>
+  </div>
+  <div class="lower">
+    <div class="box"><h3>حرکت‌ها</h3><div id="history">هنوز حرکتی انجام نشده.</div></div>
+    <div class="box"><h3>مهره‌های گرفته‌شده</h3><div id="captured">—</div></div>
+  </div>
+  <div class="note">راهنما: مهره را لمس کن، سپس خانهٔ مقصد را انتخاب کن. خانه‌های سبز حرکت‌های مجاز هستند. برای ترفیع پیاده، مهرهٔ دلخواهت را انتخاب کن. بازی روی همین گوشی و به‌صورت نوبتی انجام می‌شود.</div>
+</div>
+</div>
+<div class="modal" id="promotionModal"><div class="dialog"><h2>پیاده به چه مهره‌ای تبدیل شود؟</h2><div class="promos" id="promotionChoices"></div></div></div>
+<script>
+const GLYPH={wk:"♔",wq:"♕",wr:"♖",wb:"♗",wn:"♘",wp:"♙",bk:"♚",bq:"♛",br:"♜",bb:"♝",bn:"♞",bp:"♟"};
+const files="abcdefgh";
+let S, selected=null, legalForSelected=[], lastMove=null, history=[], snapshots=[], repetition={}, pendingPromotion=null;
+let peer=null, conn=null, onlineRole=null, onlineRoom=null, networkBusy=false;
+const $=id=>document.getElementById(id);
+function initial(){return {b:Array.from({length:8},()=>Array(8).fill(null)),turn:"w",castle:{K:true,Q:true,k:true,q:true},ep:null,half:0,full:1,captured:{w:[],b:[]},over:false};}
+function setup(){
+ S=initial(); const back=["r","n","b","q","k","b","n","r"];
+ for(let c=0;c<8;c++){S.b[0][c]="b"+back[c];S.b[1][c]="bp";S.b[6][c]="wp";S.b[7][c]="w"+back[c];}
+ selected=null;legalForSelected=[];lastMove=null;history=[];snapshots=[];repetition={};recordPosition();render();
+}
+function clone(x){return JSON.parse(JSON.stringify(x))}
+function inside(r,c){return r>=0&&r<8&&c>=0&&c<8}
+function color(p){return p?p[0]:null}
+function keyPos(){return JSON.stringify({b:S.b,turn:S.turn,castle:S.castle,ep:S.ep})}
+function recordPosition(){let k=keyPos();repetition[k]=(repetition[k]||0)+1}
+function attacked(r,c,by){
+ const b=S.b;
+ // pawn attacks
+ let pr=r+(by==="w"?1:-1);
+ for(let dc of [-1,1])if(inside(pr,c+dc)&&b[pr][c+dc]===by+"p")return true;
+ // knights
+ for(let [dr,dc] of [[-2,-1],[-2,1],[-1,-2],[-1,2],[1,-2],[1,2],[2,-1],[2,1]])
+  if(inside(r+dr,c+dc)&&b[r+dr][c+dc]===by+"n")return true;
+ // king
+ for(let dr=-1;dr<=1;dr++)for(let dc=-1;dc<=1;dc++)if(dr||dc)
+  if(inside(r+dr,c+dc)&&b[r+dr][c+dc]===by+"k")return true;
+ // sliders
+ for(let [dr,dc,types] of [[-1,0,"rq"],[1,0,"rq"],[0,-1,"rq"],[0,1,"rq"],[-1,-1,"bq"],[-1,1,"bq"],[1,-1,"bq"],[1,1,"bq"]]){
+  let rr=r+dr,cc=c+dc;
+  while(inside(rr,cc)){let p=b[rr][cc];if(p){if(color(p)===by&&types.includes(p[1]))return true;break;}rr+=dr;cc+=dc;}
+ }
+ return false;
+}
+function kingPos(col){for(let r=0;r<8;r++)for(let c=0;c<8;c++)if(S.b[r][c]===col+"k")return [r,c];return null}
+function inCheck(col){let k=kingPos(col);return k?attacked(k[0],k[1],col==="w"?"b":"w"):true}
+function pseudo(r,c){
+ let p=S.b[r][c];if(!p)return [];let col=color(p),t=p[1],out=[];
+ const add=(rr,cc,extra={})=>{if(inside(rr,cc)&&color(S.b[rr][cc])!==col)out.push({from:[r,c],to:[rr,cc],...extra});};
+ if(t==="p"){
+  let d=col==="w"?-1:1,start=col==="w"?6:1,last=col==="w"?0:7;
+  if(inside(r+d,c)&&!S.b[r+d][c]){
+   add(r+d,c);
+   if(r===start&&!S.b[r+2*d][c])add(r+2*d,c,{double:true});
+  }
+  for(let dc of [-1,1])if(inside(r+d,c+dc)){
+   let target=S.b[r+d][c+dc];
+   if(target&&color(target)!==col)add(r+d,c+dc);
+   if(S.ep&&S.ep[0]===r+d&&S.ep[1]===c+dc)add(r+d,c+dc,{ep:true});
+  }
+ }else if(t==="n"){
+  for(let [dr,dc] of [[-2,-1],[-2,1],[-1,-2],[-1,2],[1,-2],[1,2],[2,-1],[2,1]])add(r+dr,c+dc);
+ }else if(t==="k"){
+  for(let dr=-1;dr<=1;dr++)for(let dc=-1;dc<=1;dc++)if(dr||dc)add(r+dr,c+dc);
+  // castling
+  let row=col==="w"?7:0,enemy=col==="w"?"b":"w";
+  if(r===row&&c===4&&!inCheck(col)){
+   let K=col==="w"?"K":"k",Q=col==="w"?"Q":"q";
+   if(S.castle[K]&&!S.b[row][5]&&!S.b[row][6]&&S.b[row][7]===col+"r"&&!attacked(row,5,enemy)&&!attacked(row,6,enemy))out.push({from:[r,c],to:[row,6],castle:"K"});
+   if(S.castle[Q]&&!S.b[row][1]&&!S.b[row][2]&&!S.b[row][3]&&S.b[row][0]===col+"r"&&!attacked(row,3,enemy)&&!attacked(row,2,enemy))out.push({from:[r,c],to:[row,2],castle:"Q"});
+  }
+ }else{
+  let dirs=t==="r"?[[-1,0],[1,0],[0,-1],[0,1]]:t==="b"?[[-1,-1],[-1,1],[1,-1],[1,1]]:[[-1,0],[1,0],[0,-1],[0,1],[-1,-1],[-1,1],[1,-1],[1,1]];
+  for(let [dr,dc] of dirs){let rr=r+dr,cc=c+dc;while(inside(rr,cc)){if(!S.b[rr][cc])out.push({from:[r,c],to:[rr,cc]});else{if(color(S.b[rr][cc])!==col)out.push({from:[r,c],to:[rr,cc]});break;}rr+=dr;cc+=dc;}}
+ }
+ return out;
+}
+function applyRaw(m,promo=null){
+ let [r,c]=m.from,[rr,cc]=m.to,p=S.b[r][c],col=color(p),captured=S.b[rr][cc];
+ if(m.ep){captured=S.b[r][cc];S.b[r][cc]=null;}
+ S.b[rr][cc]=p;S.b[r][c]=null;
+ if(m.castle){let row=r;if(m.castle==="K"){S.b[row][5]=S.b[row][7];S.b[row][7]=null;}else{S.b[row][3]=S.b[row][0];S.b[row][0]=null;}}
+ if(p[1]==="p"&&(rr===0||rr===7))S.b[rr][cc]=col+(promo||"q");
+ if(captured)S.captured[col].push(captured);
+ if(p==="wk"){S.castle.K=false;S.castle.Q=false;}if(p==="bk"){S.castle.k=false;S.castle.q=false;}
+ if(p==="wr"&&r===7&&c===7)S.castle.K=false;if(p==="wr"&&r===7&&c===0)S.castle.Q=false;
+ if(p==="br"&&r===0&&c===7)S.castle.k=false;if(p==="br"&&r===0&&c===0)S.castle.q=false;
+ if(captured==="wr"&&rr===7&&cc===7)S.castle.K=false;if(captured==="wr"&&rr===7&&cc===0)S.castle.Q=false;
+ if(captured==="br"&&rr===0&&cc===7)S.castle.k=false;if(captured==="br"&&rr===0&&cc===0)S.castle.q=false;
+ S.ep=(p[1]==="p"&&Math.abs(rr-r)===2)?[(rr+r)/2,c]:null;
+ S.half=(p[1]==="p"||captured)?0:S.half+1;
+ if(col==="b")S.full++;
+ S.turn=col==="w"?"b":"w";
+}
+function legalMoves(r,c){let p=S.b[r][c];if(!p||color(p)!==S.turn)return [];
+ return pseudo(r,c).filter(m=>{let old=clone(S);applyRaw(m,"q");let ok=!inCheck(color(p));S=old;return ok;});
+}
+function allLegal(col=S.turn){let a=[];for(let r=0;r<8;r++)for(let c=0;c<8;c++)if(color(S.b[r][c])===col)a.push(...legalMovesForColor(r,c,col));return a;}
+function legalMovesForColor(r,c,col){let oldTurn=S.turn;S.turn=col;let a=legalMoves(r,c);S.turn=oldTurn;return a;}
+function insufficient(){
+ let pieces=[];for(let r=0;r<8;r++)for(let c=0;c<8;c++){let p=S.b[r][c];if(p&&p[1]!=="k")pieces.push([p,r,c]);}
+ if(pieces.length===0)return true;
+ if(pieces.length===1&&["b","n"].includes(pieces[0][0][1]))return true;
+ if(pieces.every(x=>x[0][1]==="b")){let colors=pieces.map(x=>(x[1]+x[2])%2);return colors.every(x=>x===colors[0]);}
+ return false;
+}
+function san(m,promo){
+ let p=S.b[m.from[0]][m.from[1]],dest=files[m.to[1]]+(8-m.to[0]);
+ if(m.castle)return m.castle==="K"?"O-O":"O-O-O";
+ let capture=!!(S.b[m.to[0]][m.to[1]]||m.ep);
+ let s=(p[1]==="p"?(capture?files[m.from[1]]:""):({k:"K",q:"Q",r:"R",b:"B",n:"N"}[p[1]]));
+ return s+(capture?"x":"")+dest+(promo?"="+promo.toUpperCase():"");
+}
+function makeMove(m,promo=null){
+ if(S.over)return;
+ let p=S.b[m.from[0]][m.from[1]],notation=san(m,promo),oldTurn=S.turn;
+ snapshots.push({S:clone(S),lastMove:clone(lastMove),history:clone(history),repetition:clone(repetition)});
+ applyRaw(m,promo);lastMove={from:m.from,to:m.to};recordPosition();
+ let check=inCheck(S.turn),moves=allLegal();
+ if(check&&moves.length===0)notation+="#";else if(check)notation+="+";
+ history.push({n:S.full-(S.turn==="w"?1:0),text:notation,col:oldTurn});
+ selected=null;legalForSelected=[];
+ evaluateEnd(moves);render(); if(onlineRole==="host") sendState();
+}
+function evaluateEnd(moves){
+ let msg="";
+ if(moves.length===0){S.over=true;msg=inCheck(S.turn)?(S.turn==="w"?"مات! سیاه برنده شد.":"مات! سفید برنده شد."):"پات! بازی مساوی شد.";}
+ else if(insufficient()){S.over=true;msg="مساوی؛ مهرهٔ کافی برای مات وجود ندارد.";}
+ else if((repetition[keyPos()]||0)>=5){S.over=true;msg="مساوی خودکار؛ یک وضعیت پنج بار تکرار شد.";}
+ else if(S.half>=150){S.over=true;msg="مساوی خودکار؛ ۷۵ حرکت برای هر طرف بدون گرفتن مهره یا حرکت پیاده.";}
+ else if(inCheck(S.turn))msg="کیش! "+(S.turn==="w"?"نوبت سفید است.":"نوبت سیاه است.");
+ else msg="نوبت "+(S.turn==="w"?"سفید":"سیاه")+" است.";
+ $("status").textContent=msg;
+}
+function render(){
+ const board=$("board");board.innerHTML="";
+ let kp=inCheck("w")?kingPos("w"):null,bkp=inCheck("b")?kingPos("b"):null;
+ for(let r=0;r<8;r++)for(let c=0;c<8;c++){
+  let sq=document.createElement("div");sq.className="sq "+((r+c)%2===0?"light":"dark");sq.dataset.r=r;sq.dataset.c=c;
+  if(selected&&selected[0]===r&&selected[1]===c)sq.classList.add("selected");
+  if(lastMove&&(same(lastMove.from,[r,c])||same(lastMove.to,[r,c])))sq.classList.add("last");
+  if((kp&&same(kp,[r,c]))||(bkp&&same(bkp,[r,c])))sq.classList.add("check");
+  let p=S.b[r][c];if(p){let sp=document.createElement("span");sp.className="piece "+(p[0]==="w"?"white-piece":"black-piece");sp.textContent=GLYPH[p];sq.appendChild(sp);}
+  if(legalForSelected.some(m=>same(m.to,[r,c]))){let mark=document.createElement("i");mark.className=(p?"capture-ring":"dot");sq.appendChild(mark);}
+  if(r===7){let co=document.createElement("span");co.className="coord file";co.textContent=files[c];sq.appendChild(co);}
+  if(c===0){let co=document.createElement("span");co.className="coord rank";co.textContent=8-r;sq.appendChild(co);}
+  sq.addEventListener("click",()=>clickSquare(r,c));board.appendChild(sq);
+ }
+ $("whitePlayer").classList.toggle("active",S.turn==="w"&&!S.over);
+ $("blackPlayer").classList.toggle("active",S.turn==="b"&&!S.over);
+ renderHistory();renderCaptured();
+ if(!S.over){let moves=allLegal();if(moves.length===0)evaluateEnd(moves);}
+}
+function same(a,b){return a&&b&&a[0]===b[0]&&a[1]===b[1]}
+function clickSquare(r,c){
+ if(S.over)return;
+ if(onlineRole==="host"&&S.turn!=="w")return;
+ if(onlineRole==="guest"&&S.turn!=="b")return;
+ let p=S.b[r][c];
+ if(selected){
+  let options=legalForSelected.filter(m=>same(m.to,[r,c]));
+  if(options.length){
+   let m=options[0],moving=S.b[selected[0]][selected[1]];
+   if(moving[1]==="p"&&(r===0||r===7)){pendingPromotion=m;showPromotion(moving[0]);}
+   else if(onlineRole==="guest"){sendMoveRequest(m,null);selected=null;legalForSelected=[];$("status").textContent="حرکت ارسال شد؛ منتظر تأیید حریف...";render();}
+   else makeMove(m);
+   return;
+  }
+  if(p&&color(p)===S.turn){selected=[r,c];legalForSelected=legalMoves(r,c);}
+  else{selected=null;legalForSelected=[];}
+ }else if(p&&color(p)===S.turn){selected=[r,c];legalForSelected=legalMoves(r,c);}
+ render();
+}
+function showPromotion(col){
+ const modal=$("promotionModal"),box=$("promotionChoices");box.innerHTML="";
+ for(let t of ["q","r","b","n"]){let b=document.createElement("button");b.textContent=GLYPH[col+t];b.className=col==="w"?"white-piece":"black-piece";b.onclick=()=>{modal.classList.remove("show");if(onlineRole==="guest"){sendMoveRequest(pendingPromotion,t);selected=null;legalForSelected=[];$("status").textContent="حرکت ارسال شد؛ منتظر تأیید حریف...";render();}else makeMove(pendingPromotion,t);pendingPromotion=null;};box.appendChild(b);}
+ modal.classList.add("show");
+}
+function renderHistory(){
+ let el=$("history");if(!history.length){el.textContent="هنوز حرکتی انجام نشده.";return;}
+ el.innerHTML=history.map((h,i)=>i%2===0?`<div><b>${Math.ceil((i+1)/2)}.</b> ${h.text}`:`<span style="color:#f0d9b5">${h.text}</span></div>`).join("");
+ el.scrollTop=el.scrollHeight;
+}
+function renderCaptured(){
+ let w=S.captured.w.map(p=>GLYPH[p]).join(" "),b=S.captured.b.map(p=>GLYPH[p]).join(" ");
+ $("captured").innerHTML=`<div>سفید گرفته: ${w||"—"}</div><div>سیاه گرفته: ${b||"—"}</div>`;
+}
+$("newGame").onclick=()=>{if(confirm("بازی فعلی پاک و بازی جدید شروع شود؟")){setup();if(onlineRole==="host")sendState();}};
+$("undo").onclick=()=>{if(onlineRole==="guest"){alert("در بازی آنلاین فقط میزبان می‌تواند حرکت را برگرداند.");return;}if(!snapshots.length||S.over&&history.length===0)return;let x=snapshots.pop();S=x.S;lastMove=x.lastMove;history=x.history;repetition=x.repetition;selected=null;legalForSelected=[];render();$("status").textContent="آخرین حرکت برگردانده شد؛ نوبت "+(S.turn==="w"?"سفید":"سیاه")+" است.";};
+$("claimDraw").onclick=()=>{
+ if(onlineRole==="guest"){alert("در نسخهٔ فعلی درخواست مساوی را بازیکن میزبان ثبت می‌کند.");return;}
+ let k=keyPos(),three=(repetition[k]||0)>=3, fifty=S.half>=100;
+ if(three||fifty){S.over=true;$("status").textContent=three?"مساوی اعلام شد؛ وضعیت سه بار تکرار شده است.":"مساوی اعلام شد؛ قانون پنجاه حرکت برقرار است.";render();}
+ else alert("فعلاً شرایط اعلام مساوی برقرار نیست. برای تکرار وضعیت باید همان موقعیت سه بار ایجاد شده باشد؛ قانون پنجاه حرکت هم به ۵۰ حرکت هر طرف بدون گرفتن مهره یا حرکت پیاده نیاز دارد.");
+};
+
+function setOnlineStatus(msg){$("onlineStatus").textContent=msg;}
+function peerOptions(){return {host:"0.peerjs.com",port:443,path:"/",secure:true,debug:1};}
+function cleanRoom(v){return (v||"").replace(/[^a-zA-Z0-9_-]/g,"").slice(0,12);}
+function makeRoomCode(){return String(Math.floor(100000+Math.random()*900000));}
+function startHost(){
+ if(typeof Peer==="undefined"){setOnlineStatus("کتابخانهٔ اتصال آنلاین بارگذاری نشد؛ اینترنت و دسترسی به unpkg.com را بررسی کن.");return;}
+ closeConnection();
+ let code=cleanRoom($("roomCode").value)||makeRoomCode();
+ $("roomCode").value=code;onlineRoom=code;onlineRole="host";
+ peer=new Peer("chess-"+code,peerOptions());
+ setOnlineStatus("در حال ساخت اتاق "+code+" ...");
+ peer.on("open",()=>setOnlineStatus("اتاق آماده است. کد "+code+" را برای دوستت بفرست؛ تو با مهرهٔ سفید بازی می‌کنی."));
+ peer.on("connection",c=>{
+   if(conn&&conn.open){c.close();return;}
+   conn=c;wireConnection();
+ });
+ peer.on("error",e=>{setOnlineStatus("خطا در ساخت اتاق: "+(e.type==="unavailable-id"?"این کد قبلاً استفاده شده؛ کد دیگری امتحان کن.":e.message||e.type));});
+ peer.on("disconnected",()=>setOnlineStatus("اتصال اینترنت قطع شد؛ در حال تلاش برای اتصال مجدد..."));
+}
+function joinRoom(){
+ if(typeof Peer==="undefined"){setOnlineStatus("کتابخانهٔ اتصال آنلاین بارگذاری نشد؛ اینترنت و دسترسی به unpkg.com را بررسی کن.");return;}
+ let code=cleanRoom($("roomCode").value);
+ if(!code){alert("اول کد اتاق دوستت را وارد کن.");return;}
+ closeConnection();onlineRoom=code;onlineRole="guest";
+ peer=new Peer(undefined,peerOptions());
+ setOnlineStatus("در حال اتصال به اتاق "+code+" ...");
+ peer.on("open",()=>{conn=peer.connect("chess-"+code,{reliable:true});wireConnection();});
+ peer.on("error",e=>setOnlineStatus("خطای اتصال: "+(e.message||e.type)));
+}
+function wireConnection(){
+ if(!conn)return;
+ conn.on("open",()=>{
+   if(onlineRole==="guest"){setOnlineStatus("وصل شدی! تو مهرهٔ سیاه هستی؛ منتظر وضعیت بازی...");}
+   else setOnlineStatus("دوستت وصل شد! تو سفید و دوستت سیاه هستید.");
+   if(onlineRole==="guest")conn.send({type:"hello"});
+   if(onlineRole==="host")sendState();
+ });
+ conn.on("data",msg=>{
+   if(!msg||typeof msg!=="object")return;
+   if(onlineRole==="host"&&msg.type==="move"){
+     if(!conn||!conn.open||S.over||S.turn!=="b")return;
+     let m=allLegal().find(x=>same(x.from,msg.from)&&same(x.to,msg.to));
+     if(m){
+       let p=S.b[m.from[0]][m.from[1]];
+       let promo=(p&&p[1]==="p"&&(m.to[0]===0||m.to[0]===7))?msg.promo:null;
+       if(promo&&!["q","r","b","n"].includes(promo))promo="q";
+       makeMove(m,promo);
+     }
+   }else if(onlineRole==="host"&&msg.type==="hello"){sendState();}
+   else if(onlineRole==="guest"&&msg.type==="state"){
+     S=msg.S;lastMove=msg.lastMove;history=msg.history||[];repetition=msg.repetition||{};
+     selected=null;legalForSelected=[];snapshots=[];
+     render();
+     setOnlineStatus("متصل به اتاق "+onlineRoom+"؛ تو سیاه هستی و نوبت‌ها به‌صورت خودکار هماهنگ می‌شوند.");
+   }
+ });
+ conn.on("close",()=>setOnlineStatus("ارتباط با حریف قطع شد. اگر لازم است دوباره وارد اتاق شوید."));
+ conn.on("error",e=>setOnlineStatus("اشکال در ارتباط: "+(e.message||"خطای شبکه")));
+}
+function sendState(){
+ if(conn&&conn.open)conn.send({type:"state",S:clone(S),lastMove:clone(lastMove),history:clone(history),repetition:clone(repetition)});
+}
+function sendMoveRequest(m,promo){
+ if(conn&&conn.open)conn.send({type:"move",from:m.from,to:m.to,promo});
+ else setOnlineStatus("هنوز به حریف وصل نیستی؛ اتصال را بررسی کن.");
+}
+function closeConnection(){
+ try{if(conn)conn.close();if(peer)peer.destroy();}catch(e){}
+ peer=null;conn=null;onlineRole=null;onlineRoom=null;
+}
+$("createRoom").onclick=startHost;
+$("joinRoom").onclick=joinRoom;
+
+setup();
+</script>
+</body>
+  </html>
